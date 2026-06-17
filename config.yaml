@@ -1,0 +1,82 @@
+# ============================================================
+# 微信 AI 待办助手 — 全局配置文件
+# ============================================================
+# 说明：
+#   - [system] 节为系统配置，用户不可修改
+#   - [defaults] 节为全局默认值，新用户自动继承
+#   - [constraints] 节定义用户可修改的范围
+#   - 用户可通过对话覆盖 defaults 中的设置项
+# ============================================================
+
+# ========== 系统配置（不可被用户覆盖）==========
+system:
+  # --- LLM 配置 ---
+  llm:
+    api_base: "${DEEPSEEK_API_BASE:-https://api.deepseek.com/v1}"
+    api_key: "${DEEPSEEK_API_KEY}"
+    model: "${DEEPSEEK_MODEL:-deepseek-chat}"
+    # 轻量模型用于意图分类（便宜、快）
+    light_model: "${DEEPSEEK_LIGHT_MODEL:-deepseek-chat}"
+
+  # --- 企业微信 ---
+  wecom:
+    corp_id: "${WECOM_CORP_ID}"
+    # 微信客服专用密钥
+    kf_token: "${WECOM_KF_TOKEN}"
+    kf_aes_key: "${WECOM_KF_AES_KEY}"
+    # 自建应用 secret（用于获取 access_token 调用客服API）
+    kf_app_secret: "${WECOM_KF_APP_SECRET}"
+
+  # --- 服务监听 ---
+  server:
+    host: "0.0.0.0"
+    port: 8000
+    # 外网可访问的域名（用于企业微信回调 URL）
+    public_url: "${PUBLIC_URL:-https://your-domain.com}"
+
+# ========== 全局默认值（用户可覆盖）==========
+defaults:
+  # ---------- 提醒策略 ----------
+  reminder:
+    enabled: true
+    # 首次提醒：从待办创建到第一次提醒的间隔（分钟）
+    first_reminder_delay: 30
+    # 常规提醒间隔（分钟）— 待办未完成时多久提醒一次
+    interval_minutes: 120
+    # 是否需要回复确认
+    require_acknowledgment: true
+    # 未回复时重复提醒
+    no_reply_retry:
+      max_retries: 3           # 最多重复提醒次数（0=不重试）
+      retry_interval: 30       # 重复提醒间隔（分钟）
+    # 静默时段（不发送提醒）
+    quiet_hours:
+      enabled: true
+      start: "22:00"
+      end: "08:00"
+      # delay: 静默结束后补发 | skip: 静默期内直接跳过
+      strategy: "delay"
+
+  # ---------- 每日总结 ----------
+  daily_summary:
+    auto_send: true
+    time: "21:00"
+
+  # ---------- 待办限制 ----------
+  todo_limits:
+    max_active_per_user: 50
+    auto_cancel_days: 7        # 超过7天自动取消，0=不自动取消
+
+# ========== 用户可修改范围约束 ==========
+constraints:
+  reminder:
+    interval_minutes:  { min: 10,  max: 1440 }
+    first_reminder_delay: { min: 5, max: 1440 }
+    no_reply_retry:
+      max_retries:      { min: 0,  max: 10 }
+      retry_interval:   { min: 5,  max: 1440 }
+  daily_summary:
+    time:                "HH:MM 格式，如 09:00、21:00"
+  quiet_hours:
+    start:               "HH:MM 格式"
+    end:                 "HH:MM 格式"
