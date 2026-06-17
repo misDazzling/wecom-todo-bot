@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS users (
     nickname        VARCHAR(128),
     open_kfid       VARCHAR(64),
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    kf_msg_count    INTEGER      NOT NULL DEFAULT 0,
+    kf_msg_window_start TIMESTAMPTZ,
     is_active       BOOLEAN      NOT NULL DEFAULT TRUE
 );
 CREATE INDEX IF NOT EXISTS idx_users_external_id ON users(external_userid);

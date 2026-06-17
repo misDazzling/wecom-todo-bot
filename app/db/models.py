@@ -34,6 +34,9 @@ class User(Base):
     nickname = Column(String(128), nullable=True)
     open_kfid = Column(String(64), nullable=True)   # KF account ID for sending reminders
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    # 48h message quota tracking (WeChat KF limit: 5 msgs per 48h window)
+    kf_msg_count = Column(Integer, default=0)
+    kf_msg_window_start = Column(DateTime(timezone=True), nullable=True)
     is_active = Column(Boolean, default=True)
 
     # Relationships

@@ -37,15 +37,11 @@ async def _send_reminder(
     todos: list[dict],
     require_ack: bool,
     is_retry: bool = False,
+    db_session=None,
+    user_obj=None,
 ) -> bool:
     """Send a reminder message to a user. Returns True on success."""
     cfg = get_config()
-
-    try:
-        token = await get_access_token(cfg.system.wecom.corp_id, cfg.system.wecom.kf_app_secret)
-    except Exception as e:
-        logger.error(f"Failed to get access token for reminder: {e}")
-        return False
 
     # Build message
     if is_retry:
@@ -63,13 +59,41 @@ async def _send_reminder(
     else:
         lines.append("回复「完成 #编号」即可销项。")
 
+    # Quota check: warn if running low
+    quota_warning = ""
+    if user_obj:
+        from app.db import async_session as _sess
+        from app.service.quota import check_quota, record_send as quota_record
+        async with _sess() as qdb:
+            can_send, remaining, warning = await check_quota(qdb, user_obj)
+            if not can_send:
+                logger.warning(f"Quota exhausted for {external_userid}, cannot send reminder")
+                return False
+            if warning:
+                quota_warning = warning
+
+    if quota_warning:
+        lines.append("")
+        lines.append(quota_warning)
+
     message = "\n".join(lines)
 
-    # Send individual message to each user
-    # Note: open_kfid is typically the same for all messages from one KF account
+    try:
+        token = await get_access_token(cfg.system.wecom.corp_id, cfg.system.wecom.kf_app_secret)
+    except Exception as e:
+        logger.error(f"Failed to get access token for reminder: {e}")
+        return False
+
     success = await send_message(
         token, open_kfid, external_userid, "text", content=message
     )
+
+    if success and user_obj:
+        from app.db import async_session as _sess
+        from app.service.quota import record_send as quota_record
+        async with _sess() as qdb:
+            await quota_record(qdb, user_obj)
+
     return success
 
 
@@ -192,9 +216,21 @@ async def run_reminder_cycle():
         require_ack = first["require_acknowledgment"]
         has_retry = any(t["status"] == "reminding" for t in remind_targets)
 
+        # Load user for quota tracking
+        from app.db import async_session as db_sess
+        from sqlalchemy import select
+        from app.db.models import User
+        async with db_sess() as sess:
+            result = await sess.execute(
+                select(User).where(User.id == user_id)
+            )
+            user_obj = result.scalar_one_or_none()
+
         success = await _send_reminder(
             external_userid, open_kfid, remind_targets,
             require_ack=require_ack, is_retry=has_retry,
+            db_session=None,  # We'll use a fresh session inside the helper if needed
+            user_obj=user_obj,
         )
 
         if success:

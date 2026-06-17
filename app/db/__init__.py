@@ -38,6 +38,8 @@ async def init_db():
         from sqlalchemy import text
         migrations = [
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS open_kfid VARCHAR(64)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS kf_msg_count INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS kf_msg_window_start TIMESTAMPTZ",
         ]
         for sql in migrations:
             try:

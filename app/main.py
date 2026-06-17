@@ -67,17 +67,46 @@ async def _on_user_message(external_userid: str, msg):
         logger.debug(f"Skipping non-text message from {external_userid}")
         return
 
+    # User sent a message → reset 48h quota window
+    from app.db import async_session as db_session
+    from app.service.quota import reset_quota
+    async with db_session() as db:
+        from sqlalchemy import select
+        from app.db.models import User
+        result = await db.execute(select(User).where(User.external_userid == external_userid))
+        user = result.scalar_one_or_none()
+        if user:
+            await reset_quota(db, user)
+
     reply_text = await handle_message(external_userid, msg)
     logger.debug(f"handle_message returned: '{reply_text[:80] if reply_text else 'None'}'")
 
     if reply_text:
         try:
+            # Track quota before sending
+            from app.service.quota import check_quota, record_send
+            async with db_session() as db:
+                result = await db.execute(select(User).where(User.external_userid == external_userid))
+                user = result.scalar_one_or_none()
+                if user:
+                    can_send, remaining, warning = await check_quota(db, user)
+                    if not can_send:
+                        logger.warning(f"Quota exhausted for {external_userid}, cannot reply")
+                        return
+                    if warning:
+                        reply_text += f"\n\n{warning}"
+
             token = await get_access_token(cfg.system.wecom.corp_id, cfg.system.wecom.kf_app_secret)
             success = await kf_send(
                 token, msg.open_kfid, external_userid,
                 "text", content=reply_text,
             )
             if success:
+                async with db_session() as db:
+                    result = await db.execute(select(User).where(User.external_userid == external_userid))
+                    user = result.scalar_one_or_none()
+                    if user:
+                        await record_send(db, user)
                 logger.info(f"Replied to user {external_userid}")
             else:
                 logger.error(f"Failed to send reply to {external_userid}")
